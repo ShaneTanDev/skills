@@ -8,6 +8,10 @@
 #   uncommitted [-- <args>]                           Review staged+unstaged+untracked
 #   files <review prompt mentioning the files>       Static read-only review (no diff) via codex exec
 #
+# Heartbeat: codex output is the heartbeat. Total silence (stdout+stderr) for
+# CODEX_REVIEW_HEARTBEAT seconds (default 300) = hung -> killed and restarted,
+# up to CODEX_REVIEW_RESTARTS times (default 2) before giving up.
+#
 # Read-only by design. Never edits code. Returns Codex output verbatim on stdout.
 set -euo pipefail
 
@@ -26,14 +30,62 @@ trust_here() { printf 'projects."%s".trust_level="trusted"' "$(repo_root_p)"; }
 
 # Cleanup state must be SCRIPT-GLOBAL: the EXIT trap fires after the creating function returns,
 # so function-local vars would be out of scope (and trip `set -u`). One trap, guarded no-ops.
-CR_WT=""; PR_REF=""; BASE_REF=""; CR_OUT=""
+CR_WT=""; PR_REF=""; BASE_REF=""; CR_OUT=""; HB_OUT="$(mktemp)"; HB_ERR="$(mktemp)"
 _cr_cleanup() {
   [ -n "${CR_WT:-}" ]    && git worktree remove --force "$CR_WT" 2>/dev/null || true
   [ -n "${PR_REF:-}" ]   && git update-ref -d "$PR_REF"   2>/dev/null || true
   [ -n "${BASE_REF:-}" ] && git update-ref -d "$BASE_REF" 2>/dev/null || true
   [ -n "${CR_OUT:-}" ]   && rm -f "$CR_OUT" 2>/dev/null || true
+  rm -f "$HB_OUT" "$HB_ERR" 2>/dev/null || true
 }
 trap _cr_cleanup EXIT INT TERM
+
+# --- heartbeat watchdog -------------------------------------------------------
+# codex's own output is the heartbeat: it streams progress while healthy. If BOTH
+# streams go silent for HB_TIMEOUT seconds the run is hung -> kill, restart (max
+# HB_RESTARTS extra attempts), then give up. stderr streams live via tail -f;
+# stdout is buffered to a file and emitted verbatim on completion (no interleaving
+# races, and a killed attempt never leaks partial review text to the caller).
+HB_TIMEOUT="${CODEX_REVIEW_HEARTBEAT:-300}"
+HB_RESTARTS="${CODEX_REVIEW_RESTARTS:-2}"
+mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+
+run_hb() {
+  local attempt=0 rc hung pid tailpid now
+  while :; do
+    attempt=$((attempt + 1)); hung=0; rc=0
+    : > "$HB_OUT"; : > "$HB_ERR"
+    "$@" >>"$HB_OUT" 2>>"$HB_ERR" & pid=$!
+    tail -f "$HB_ERR" >&2 & tailpid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+      sleep 5
+      kill -0 "$pid" 2>/dev/null || break   # exited during sleep: not a hang
+      now="$(date +%s)"
+      if [ $((now - $(mtime "$HB_OUT"))) -ge "$HB_TIMEOUT" ] \
+         && [ $((now - $(mtime "$HB_ERR"))) -ge "$HB_TIMEOUT" ]; then
+        hung=1
+        printf 'codex-reviewer: no heartbeat for %ss — killing codex (attempt %s/%s)\n' \
+          "$HB_TIMEOUT" "$attempt" "$((HB_RESTARTS + 1))" >&2
+        kill -TERM "$pid" 2>/dev/null || true
+        sleep 5
+        kill -KILL "$pid" 2>/dev/null || true
+        break
+      fi
+    done
+    wait "$pid" || rc=$?
+    kill "$tailpid" 2>/dev/null || true; wait "$tailpid" 2>/dev/null || true
+    if [ "$hung" -eq 1 ]; then
+      if [ "$attempt" -le "$HB_RESTARTS" ]; then
+        printf 'codex-reviewer: restarting codex...\n' >&2
+        continue
+      fi
+      die "codex hung $attempt time(s) (no output for ${HB_TIMEOUT}s each) — giving up. Raise CODEX_REVIEW_HEARTBEAT if reviews legitimately run silent longer."
+    fi
+    cat "$HB_OUT"
+    return "$rc"
+  done
+}
+# ------------------------------------------------------------------------------
 
 # Prefer an existing remote URL that already points at the same OWNER/REPO (its auth — ssh or https
 # credential helper — already works, which matters for private repos). Fall back to the HTTPS .git URL.
@@ -54,7 +106,7 @@ review_in_worktree() {
   local tip="$1" base="$2" title="$3"; shift 3
   CR_WT="$(mktemp -d)"; CR_WT="$(cd "$CR_WT" && pwd -P)"   # global + physical path → matches codex trust key
   git worktree add --detach "$CR_WT" "$tip" >/dev/null
-  ( cd "$CR_WT" && codex review "${RO[@]}" \
+  ( cd "$CR_WT" && run_hb codex review "${RO[@]}" \
       -c "projects.\"$CR_WT\".trust_level=\"trusted\"" \
       --base "$base" ${title:+--title "$title"} "$@" )
 }
@@ -101,7 +153,8 @@ case "$cmd" in
     git --no-pager log --oneline "$base..$tip" >&2 || true
     printf '== end (%s commits) ==\n' "$(git rev-list --count "$base..$tip" 2>/dev/null || echo '?')" >&2
     if [ "$(git rev-parse "$tip")" = "$(git rev-parse HEAD)" ]; then
-      exec codex review "${RO[@]}" -c "$(trust_here)" --base "$base" "$@"   # tip == HEAD → in place, no worktree
+      run_hb codex review "${RO[@]}" -c "$(trust_here)" --base "$base" "$@"   # tip == HEAD → in place, no worktree
+      exit $?
     fi
     review_in_worktree "$tip" "$base" "" "$@"                 # tip != HEAD → worktree
     ;;
@@ -112,14 +165,14 @@ case "$cmd" in
     sha="${1:-}"; [ -n "$sha" ] || die "usage: commit <sha>"; shift || true
     [ "${1:-}" = "--" ] && shift || true
     git rev-parse --verify --quiet "$sha^{commit}" >/dev/null || die "no such commit: $sha"
-    exec codex review "${RO[@]}" -c "$(trust_here)" --commit "$sha" "$@"
+    run_hb codex review "${RO[@]}" -c "$(trust_here)" --commit "$sha" "$@"
     ;;
 
   uncommitted)
     need codex
     in_git_repo || die "not inside a git repository"
     [ "${1:-}" = "--" ] && shift || true
-    exec codex review "${RO[@]}" -c "$(trust_here)" --uncommitted "$@"
+    run_hb codex review "${RO[@]}" -c "$(trust_here)" --uncommitted "$@"
     ;;
 
   files)
@@ -127,13 +180,16 @@ case "$cmd" in
     [ "$#" -ge 1 ] || die "usage: files <review prompt mentioning the file paths>"
     if in_git_repo; then EXTRA=(-c "$(trust_here)"); else EXTRA=(--skip-git-repo-check); fi
     CR_OUT="$(mktemp)"
-    # transcript/progress → stderr; stdout carries ONLY Codex's final review message (-o)
-    codex exec --sandbox read-only "${EXTRA[@]}" -o "$CR_OUT" "$*" 1>&2
+    # transcript/progress → stderr (= the heartbeat); stdout carries ONLY Codex's
+    # final review message (-o). Wrapped in a function so run_hb can watchdog it.
+    FILES_PROMPT="$*"
+    files_exec() { codex exec --sandbox read-only "${EXTRA[@]}" -o "$CR_OUT" "$FILES_PROMPT" 1>&2; }
+    run_hb files_exec
     cat "$CR_OUT"
     ;;
 
   ""|-h|--help|help)
-    sed -n '2,11p' "$0"; exit 0 ;;
+    sed -n '2,15p' "$0"; exit 0 ;;
   *)
     die "unknown subcommand '$cmd' (use: pr | range | commit | uncommitted | files)" ;;
 esac

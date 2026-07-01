@@ -36,7 +36,7 @@ None of its own — it reads your repo to find the *real* build/test/lint comman
 | Tool | Used for |
 |------|----------|
 | `/goal` command | consumes the concise objective the skill produces |
-| `codex-reviewer` skill / `codex review` | Step 6 independent adversarial read of the goal doc |
+| `codex-reviewer` skill / `codex review` | Step 6 reviews — used when the codex CLI is installed; falls back to a fresh sub-agent when it isn't |
 
 ## Install
 
@@ -62,7 +62,7 @@ The skill runs a fixed sequence so the goal an agent chases for hours is honest 
 | 3. Quantify | Pick the validator that fits the domain (bugs, tests, performance, quality, research, ops) and make it numeric/binary. |
 | 4. Write doc | Save `docs/goals/<date>-<scope>-<slug>.md` (or a single `GOAL.md`) with every field concrete. |
 | 5. Distill | Collapse it into one paste-ready `/goal` objective with verification embedded. |
-| 6. Review | **Independent adversarial read** (via `codex-reviewer` / `codex review`) — is it verifiable, a single finish line, internally consistent, and *gameable*? Fix the holes. |
+| 6. Review ×2 | **Two independent adversarial rounds** — Codex (via `codex-reviewer`) when the codex CLI is installed, a fresh sub-agent otherwise. Write → review → fix → review → only then the final doc. Brief: verifiable? single finish line? consistent? *gameable*? |
 
 ### The one rule that matters
 

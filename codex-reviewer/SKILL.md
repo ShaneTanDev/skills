@@ -103,6 +103,16 @@ Trust is handled for you: every call pre-trusts the exact directory for **that i
 (nothing persisted to codex config), so reviews run non-interactively even in repos codex has never
 been opened in. Expect no trust prompt; if codex still refuses, relay its error verbatim.
 
+## Heartbeat / hang recovery (built-in, nothing to do)
+
+Every codex run is watchdog-wrapped by the helper: codex's own output stream is the heartbeat. If
+it goes completely silent (no stdout and no stderr) for `CODEX_REVIEW_HEARTBEAT` seconds (default
+300), the run is declared hung → killed → restarted, up to `CODEX_REVIEW_RESTARTS` extra attempts
+(default 2) before failing with a clear error. You will see `no heartbeat … killing codex` /
+`restarting codex...` on stderr — that is the watchdog working, not an error to act on. If it gives
+up, relay the final error verbatim. Only tune the env vars when the user asks (e.g.
+`CODEX_REVIEW_HEARTBEAT=600` for reviews that legitimately think silently for a long time).
+
 ## Output mode
 
 - **v1 is foreground on every agent** (Claude Code / Codex / OpenClaw / Gemini) for consistent

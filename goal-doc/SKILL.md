@@ -192,21 +192,34 @@ recurring holes — close each one in the doc:
 - **Unverified side-claims** — a criterion ("the old store still loads") with no assertion behind it.
   Every criterion needs a check that actually exercises it, or the agent will quietly skip it.
 
-## Step 6 — Independent adversarial review (don't grade your own homework)
+## Step 6 — Independent adversarial review (two rounds, don't grade your own homework)
 
 A goal doc is high-leverage: an agent pursues it for hours, so a gameable or ambiguous goal is
-expensive to get wrong. You wrote it, so your self-check is biased — get an *independent* adversarial
-read before handing it over.
+expensive to get wrong. You wrote it, so your self-check is biased — the doc is **not final until it
+has survived two independent review rounds**.
 
-- **In Claude Code**: invoke the **codex-reviewer** skill on the saved goal file, asking specifically
-  whether the goal is verifiable, a single finish line, internally consistent, and *gameable* (could
-  an agent satisfy the letter while missing the intent).
-- **Elsewhere**: run `codex review` on the file, or dispatch a fresh subagent with those same questions.
+**Pick the reviewer once** (check `command -v codex`):
 
-Then triage every finding: fix the real holes — ambiguous thresholds, gameable bars, unverified
-criteria, smuggled scope — directly in the doc. For a finding you judge wrong, say *why* and leave
-it; don't fix on autopilot. If you made substantial changes, re-review. If no independent reviewer is
-available, run the "Close the gaming holes" checklist above yourself, deliberately, before finishing.
+- **codex CLI installed** → hand the saved goal file to Codex: in Claude Code invoke the
+  **codex-reviewer** skill (its `files` mode); elsewhere run the equivalent `codex review` /
+  `codex exec` on the file.
+- **no codex** → dispatch a **fresh sub-agent** of the current agent with the same brief. A clean
+  context is still an independent reader — never skip review because codex is missing.
+
+**The brief (identical for either reviewer):** is the goal verifiable, a single finish line,
+internally consistent, and *gameable* — could an agent satisfy the letter while missing the intent?
+
+**Fixed cadence — write, review, fix, review, then ship:**
+
+1. Draft the full doc + concise objective (Steps 4–5).
+2. **Round 1** review → triage every finding: fix the real holes — ambiguous thresholds, gameable
+   bars, unverified criteria, smuggled scope — directly in the doc. For a finding you judge wrong,
+   say *why* and leave it; don't fix on autopilot.
+3. **Round 2** review of the revised doc → triage and fix the same way.
+4. Only now hand over the final documentation (doc + paste-ready objective).
+
+If round 2 still surfaces a substantive hole, fix it and note the residual risk in the doc — two
+rounds is the cadence, not a license to loop forever.
 
 ## Clarifying questions
 

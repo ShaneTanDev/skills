@@ -131,6 +131,12 @@ Read-only is layered and honest:
 Every call also pre-trusts its directory for **that invocation only** (never persisted), so reviews
 run non-interactively even in repos codex has never been opened in.
 
+**Hang recovery (heartbeat).** Codex's own output is the heartbeat. If a run goes completely silent
+(stdout + stderr) for `CODEX_REVIEW_HEARTBEAT` seconds (default 300), the watchdog kills it and
+restarts the same review, up to `CODEX_REVIEW_RESTARTS` extra attempts (default 2) before giving up
+with an error. stderr progress streams live; stdout is emitted verbatim on completion, so a killed
+attempt never leaks partial review text.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -140,6 +146,8 @@ run non-interactively even in repos codex has never been opened in.
 | `missing dependency: ...` | Install the named tool (`codex` / `gh` / `jq`) |
 | codex says not logged in | `codex login` |
 | Review output contains codex CLI warnings | Cosmetic — `codex review` has no clean-output flag; the review text is at the end |
+| `no heartbeat for Ns — killing codex` | The watchdog caught a silent/hung run and is auto-restarting — no action needed. If healthy reviews get killed, raise `CODEX_REVIEW_HEARTBEAT` (e.g. `600`) |
+| `codex hung N time(s) … giving up` | Codex hung on every attempt — check network / `codex login`, or re-run with a higher `CODEX_REVIEW_HEARTBEAT` |
 
 ## vs the official `/codex:review`
 
