@@ -63,6 +63,7 @@ The skill runs a fixed sequence so the goal an agent chases for hours is honest 
 | 4. Write doc | Save `docs/goals/<date>-<scope>-<slug>.md` (or a single `GOAL.md`) with every field concrete. |
 | 5. Distill | Collapse it into one paste-ready `/goal` objective with verification embedded. |
 | 6. Review ×2 | **Two independent adversarial rounds** — Codex (via `codex-reviewer`) when the codex CLI is installed, a fresh sub-agent otherwise. Write → review → fix → review → only then the final doc. Brief: verifiable? single finish line? consistent? *gameable*? |
+| 7. Output | The session **ends with the paste-ready goal statement** in a code block — `/goal <objective>` — copied straight from the terminal into the autonomous run. |
 
 ### The one rule that matters
 

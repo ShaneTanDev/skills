@@ -216,10 +216,26 @@ internally consistent, and *gameable* — could an agent satisfy the letter whil
    bars, unverified criteria, smuggled scope — directly in the doc. For a finding you judge wrong,
    say *why* and leave it; don't fix on autopilot.
 3. **Round 2** review of the revised doc → triage and fix the same way.
-4. Only now hand over the final documentation (doc + paste-ready objective).
+4. Only now hand over the final documentation (doc + paste-ready objective), ending with the goal
+   statement (see Final output).
 
 If round 2 still surfaces a substantive hole, fix it and note the residual risk in the doc — two
 rounds is the cadence, not a license to loop forever.
+
+## Final output — print the goal statement in the terminal
+
+The **last thing in your final message** is the goal statement, alone in a fenced code block so the
+user can copy it straight from the terminal:
+
+```
+/goal <the final, post-review condensed objective — verification embedded>
+```
+
+Use the condensed-prose objective (Step 5) after both review rounds have shaped it. If the user
+prefers pointing at the doc, the file-reference variant works too:
+`/goal Pursue the goal in docs/goals/<file>.md until every item under "Success criteria" passes; verify with the commands in that file; stop and report if blocked.`
+
+Never end with only "the doc is saved" — the paste-ready `/goal` line **is** the deliverable.
 
 ## Clarifying questions
 
